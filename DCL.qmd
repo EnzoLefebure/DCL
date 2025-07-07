@@ -1,0 +1,157 @@
+---
+title: "DCL - Omitted Variable Bias"
+format: 
+  html:
+    theme: darkly
+    css: styles.css
+editor: visual
+runtime: shiny
+---
+
+## R setup
+
+```{r setup, echo=FALSE}
+library(MatchIt)
+library(cobalt)
+library(dplyr)
+library(ggplot2)
+library(shiny)
+data(lalonde)
+```
+
+## Variable selection
+
+```{r, echo=FALSE}
+checkboxGroupInput("vars", "Select variables for matching:",
+  choices = names(lalonde)[!names(lalonde) %in% c("treat", "re78")],
+  selected = c("age", "educ", "race")
+)
+
+uiOutput("results_output")
+```
+
+```{r, echo=FALSE}
+observe({
+  req(input$vars)
+
+  # Matching UI with headers
+  output$results_output <- renderUI({
+    req(input$vars)
+  
+    tagList(
+      tags$h4("PSM"),
+      verbatimTextOutput("psm_summary"),
+      
+      tags$h4("🔍 Matching Summary"),
+      verbatimTextOutput("match_summary"),
+      
+      tags$h4("📈 ATT Regression Summary"),
+      verbatimTextOutput("att_summary")
+    )
+    
+  })
+
+  # PSM
+  output$psm_summary <- renderPrint({
+    formula <- as.formula(paste("treat ~", paste(input$vars, collapse = " + ")))
+    summary(formula)
+  })
+  
+  # Summary of matching
+  output$match_summary <- renderPrint({
+    formula <- as.formula(paste("treat ~", paste(input$vars, collapse = " + ")))
+    m.out <- matchit(formula, data = lalonde, method = "nearest")
+    summary(m.out)
+  })
+
+  # Summary of ATT regression
+  output$att_summary <- renderPrint({
+    formula <- as.formula(paste("treat ~", paste(input$vars, collapse = " + ")))
+    m.out <- matchit(formula, data = lalonde, method = "nearest")
+    matched_data <- match.data(m.out)
+    att <- lm(re78 ~ treat, data = matched_data)
+    summary(att)
+  })
+})
+```
+
+## Omitted Variable Bias Visualization
+
+### Scatter Plots of Key Relationships
+
+```{r scatter_plots, echo=TRUE, message=FALSE, warning=FALSE, fig.width=10, fig.height=4}
+
+# re78 vs treat
+ggplot(lalonde, aes(x = treat, y = re78)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  labs(title = "re78 vs treat", x = "Treatment (0=Control, 1=Treated)", y = "Real Earnings in 1978") +
+  theme_minimal()
+
+# re78 vs re74
+ggplot(lalonde, aes(x = re74, y = re78)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  labs(title = "re78 vs re74", x = "Real Earnings in 1974", y = "Real Earnings in 1978") +
+  theme_minimal()
+
+# treat vs re74
+ggplot(lalonde, aes(x = re74, y = treat)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "glm", method.args = list(family = "binomial"), se = FALSE, color = "blue") +
+  labs(title = "treat vs re74", x = "Real Earnings in 1974", y = "Treatment (0=Control, 1=Treated)") +
+  theme_minimal()
+
+```
+
+### Coefficient Comparison Plot
+
+```{r coefficient_comparison, echo=TRUE, message=FALSE, warning=FALSE, fig.width=8, fig.height=5}
+
+# Restricted model: re78 ~ treat
+model_restricted <- lm(re78 ~ treat, data = lalonde)
+
+# Unrestricted model: re78 ~ treat + re74
+model_unrestricted <- lm(re78 ~ treat + re74, data = lalonde)
+
+# Extract coefficients and create a data frame for plotting
+coefficients_df <- data.frame(
+  model = c("Restricted (re78 ~ treat)", "Unrestricted (re78 ~ treat + re74)"),
+  coefficient = c(coef(model_restricted)["treat"], coef(model_unrestricted)["treat"]),
+  lower_ci = c(confint(model_restricted)["treat", 1], confint(model_unrestricted)["treat", 1]),
+  upper_ci = c(confint(model_restricted)["treat", 2], confint(model_unrestricted)["treat", 2])
+)
+
+ggplot(coefficients_df, aes(x = model, y = coefficient, color = model)) +
+  geom_point(size = 4) +
+  geom_errorbar(aes(ymin = lower_ci, ymax = upper_ci), width = 0.2, linewidth = 1.2) +
+  labs(title = "Comparison of 'treat' Coefficient",
+       x = "Model", y = "Coefficient of 'treat'") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+```
+
+### Residual Plot against Omitted Variable
+
+```{r residual_plot, echo=TRUE, message=FALSE, warning=FALSE, fig.width=8, fig.height=5}
+
+# Residuals from the restricted model (re78 ~ treat)
+residuals_restricted <- residuals(model_restricted)
+
+# Create a data frame for plotting
+residuals_df <- data.frame(
+  re74 = lalonde$re74,
+  residuals = residuals_restricted
+)
+
+ggplot(residuals_df, aes(x = re74, y = residuals)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  labs(title = "Residuals from Restricted Model vs re74",
+       x = "Real Earnings in 1974", y = "Residuals") +
+  theme_minimal()
+
+```
+
+

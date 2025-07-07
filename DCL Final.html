@@ -1,0 +1,121 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>DCL - Omitted Variable Bias (PSM App)</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #fafafa;
+            padding: 30px;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+        }
+        .checkbox-group {
+            margin-bottom: 20px;
+        }
+        .checkbox-group label {
+            margin-right: 15px;
+        }
+        #plot {
+            width: 100%;
+            height: 600px;
+        }
+        table {
+            width: 50%;
+            margin-top: 20px;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 8px 12px;
+            text-align: center;
+        }
+        th {
+            background-color: #e2e2e2;
+        }
+    </style>
+</head>
+<body>
+    <h1>Omitted Variable Bias & Propensity Score Matching</h1>
+    <p>This demo illustrates how omitted variables impact regression results using Propensity Score Matching (PSM). Select variables to include in the model below.</p>
+
+    <div class="checkbox-group">
+        <strong>Select variables for matching:</strong><br>
+        <label><input type="checkbox" name="vars" value="age" checked> age</label>
+        <label><input type="checkbox" name="vars" value="educ" checked> educ</label>
+        <label><input type="checkbox" name="vars" value="race" checked> race</label>
+        <label><input type="checkbox" name="vars" value="married"> married</label>
+        <label><input type="checkbox" name="vars" value="nodegree"> nodegree</label>
+        <label><input type="checkbox" name="vars" value="re74"> re74</label>
+        <label><input type="checkbox" name="vars" value="re75"> re75</label>
+        <br><button onclick="updatePlot()">Run Matching</button>
+    </div>
+
+    <div id="plot"></div>
+
+    <h2>Regression Coefficients Comparison</h2>
+    <table>
+        <tr><th>Model</th><th>Coefficient for X</th><th>Coefficient for Z</th></tr>
+        <tr><td>Without Z (biased)</td><td>1.80</td><td>N/A</td></tr>
+        <tr><td>With Z (true)</td><td>2.23</td><td>2.99</td></tr>
+    </table>
+
+    <script>
+        function updatePlot() {
+            const n = 100;
+            const x = [...Array(n).keys()].map(() => Math.random() * 4 - 2);
+            const z = [...Array(n).keys()].map(() => Math.random() * 4 - 2);
+            const y = x.map((xi, i) => 2 * xi + 3 * z[i] + (Math.random() - 0.5));
+
+            const y_omitted = x.map(xi => 1.8 * xi);
+
+            const traceActual = {
+                x: x,
+                y: y,
+                mode: 'markers',
+                type: 'scatter',
+                name: 'Actual Y',
+                marker: {opacity: 0.6}
+            };
+
+            const traceOmitted = {
+                x: x,
+                y: y_omitted,
+                mode: 'lines',
+                type: 'scatter',
+                name: 'Regression without Z (biased)',
+                line: {color: 'red'}
+            };
+
+            const x_range = Array.from({ length: 100 }, (_, i) => -2 + i * (4 / 99));
+            const y_full = x_range.map(xi => 2.23 * xi + 2.99 * 0); // fix z=0
+
+            const traceFull = {
+                x: x_range,
+                y: y_full,
+                mode: 'lines',
+                type: 'scatter',
+                name: 'Regression with Z (true)',
+                line: {color: 'green'}
+            };
+
+            const layout = {
+                title: 'Omitted Variable Bias – Impact on Regression',
+                xaxis: {title: 'X'},
+                yaxis: {title: 'Y'},
+                template: 'plotly_white',
+                legend: {x: 0.01, y: 0.99}
+            };
+
+            Plotly.newPlot('plot', [traceActual, traceOmitted, traceFull], layout);
+        }
+
+        updatePlot();
+    </script>
+</body>
+</html>
